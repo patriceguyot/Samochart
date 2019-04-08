@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Test TM-Chart</title>
+
+	
+	<script type="text/javascript" src="js/plot.js"></script>
+	<script src="js/jquery-2.1.1.js"></script>
+	<script src="js/jquery.csv-0.71.js"></script>
+	<script src="js/classes.js"></script>
+
+
+	<style type="text/css"> 
+	body {
+	background-color: #b0c4de;
+	}     
+
+	#global {
+	margin-left: auto;
+	margin-right: auto;
+	width:1100px; 
+	background-color:white;  
+	} 
+	
+	#showresult {
+  	width:98%;
+  	height: 300px;    
+	}
+	</style>    
+	
+</head>
+
+<body>
+
+	<div id="global">  
+	<center>    
+	<h1>TM-chart visualization</h1>
+	</center>    
+
+	<div id="glass" align="right">
+	<table>
+	<tr>
+	<td><input type="image" id="glass_up" src="html/images/loupe_up.jpg" style="width:50px" onClick="glass_up();"/></td>
+	<td><input type="image" id="glass_down" src="html/images/loupe_down.jpg" style="width:50px" onClick="glass_down();"/></td>
+	</tr>
+	</table>
+	</div>   
+
+	<center> 
+	<input type="file" id="files_input" multiple/>
+	<svg id="svgzone" xmlns="http://www.w3.org/2000/svg">
+	</svg>
+	</center>
+	</div>
+
+
+
+<script>
+
+
+function glass_up(){
+	console.log("scale_plotTM : ",scale_plotTM);
+	$("svg").empty();
+	scale_plotTM+=0.1;
+	console.log("Magnifing glass up. scale_plotTM : ",scale_plotTM);
+	plotlegend()
+	plotTMarray(svg,shift_x,shift_y,corpus,scale_plotTM,xmax);
+}
+
+
+function glass_down(){
+	console.log("scale_plotTM : ",scale_plotTM);
+	$("svg").empty();
+	if (scale_plotTM>0.1) {scale_plotTM-=0.1;}
+	console.log("Magnifing glass down. scale_plotTM : ",scale_plotTM);
+	plotlegend()
+	plotTMarray(svg,shift_x,shift_y,corpus,scale_plotTM,xmax);
+}
+
+
+
+
+
+
+
+	
+function getcolumn(array,numcolumn){
+// Otput a specific float column from an array of string   
+   out=[];
+   for (var i=0; i 	< array.length; i++) {
+	   out.push(parseFloat(array[i][numcolumn]));
+   }
+   return out;
+}
+
+
+percent = function (values,thres){
+// Return the % of the length of an sorted array which is superior to a specified value thres 
+  		var i=0;
+  		while (values[i]>=thres) {i++;}
+  		return (100*i/values.length);
+}
+
+	
+	
+
+
+
+makeColorFromSteps = function(filters){
+// From a step array (values between 0 and 1) return an array of values between 0 and 100
+    var confidence= new Array(filters.length);
+    for(var i=0; i < confidence.length; i++)
+    {
+        confidence[i]= Math.round(filters[i]*100);
+    }
+    return confidence;
+}
+
+
+
+
+
+
+	
+
+function openFiles(evt) {
+
+  var file_read=0;
+  var numberOfFile=0;
+  
+  var files = evt.target.files; // FileList object
+  numberOfFile=files.length;
+  console.log('Number of files : ' + numberOfFile);
+
+  for (var i = 0; i < numberOfFile; i++) {
+  	
+  	var file=files[i];
+  	
+  	reader = new FileReader();
+  	//console.log('Reading file : ' + file.name);
+    
+    reader.onloadend = function() { 	
+    	file_read++;
+    	if (file_read==numberOfFile){
+    		console.log('Reading finish');
+    		console.log(corpus);
+    		add_audio(corpus);
+    		plotlegend();
+    		plotTMarray(svg,shift_x,shift_y,corpus,scale_plotTM,xmax);
+    		
+    		}
+    	}
+    
+    reader.onload = (function(f) {
+            return function(e) {
+            	console.log('----------------------------');
+            	console.log('f.name', f.name);
+            	var recording;
+  				var source;
+  				var filter;
+            	[recording,source,filter]=getNamesFromFilename(f.name, '--', '.txt')
+                
+                var data = $.csv.toArrays(e.target.result,{separator:'\t'});
+                var duration=data[data.length-1][0];
+               
+                if (!recording.duration===false && recording.duration!=duration){
+					console.log("Warning, duration source \"" +  source.sourceName + "\" is not the same of the other source durations in the file " + recording.recordingName)
+					}
+		 		recording.duration=duration;
+		 		
+		 		var values=getcolumn(data,1);
+                values.sort();
+				values.reverse();
+		 		source.data=values;
+		 		source.percentOfDuration=percent(values,filter.threshold);
+		 		source.filter=filter;
+		 		source.fileName=f.name;
+		 		source.makeHeigths();
+		 		
+		 		// console.log('recording.recordingName', recording.recordingName);
+// 		 		console.log('source.sourceName', source.sourceName);
+// 		 		console.log('source.data', source.data);
+// 		 		console.log('source.percentOfDuration', source.percentOfDuration);
+//		 		console.log('filter.filterName', filter.filterName);
+				console.log('source.heights', source.heights);
+                
+            	};
+        })(file);
+        	
+    	reader.readAsText(file);
+    	}
+}
+
+
+
+
+function getNamesFromFilename(filename, delimiteur, extension){
+		
+		var recordingName = filename.slice(0,filename.search(delimiteur));
+		var sourceName = filename.slice(filename.search(delimiteur)+delimiteur.length, filename.search(extension));
+		var source=new Source(sourceName);
+				
+		if (typeof(corpus.getFilter(sourceName)) == 'undefined') // Check is the filter is well defined in the corpus
+		{  	throw new Error("Filter name \"" + sourceName + "\" not known") 	}
+		else { 	var filter=corpus.getFilter(sourceName); 	}
+		
+		
+		if (typeof(corpus.getRecording(recordingName)) == 'undefined')
+		{	// The recording is not in the corpus. We create a new recording and add the source to the recording
+			var recording = new Recording(recordingName);
+			corpus.addRecording(recording);
+			recording.addSource(source);	
+		}
+		else
+		{	// The recording is already is the corpus. We add the source to the recording
+			var recording = corpus.getRecording(recordingName);	
+			recording.addSource(source);
+		}
+		return [recording,source,filter];
+}
+
+
+
+function add_audio(corpus)
+// the audio file is added from the same directory for each files..
+	{
+	for (var i=0; i<corpus.recordings.length; i++){
+		var file=corpus.recordings[i].recordingName;
+		//console.log(file);
+		corpus.recordings[i].audioFile="audio/" + file + ".wav"
+	}
+	}
+
+
+function plotlegend(){
+	var origin_x=290;
+	var origin_y=47;
+	var scale=3;
+	plotlegendbar3plot(svg,corpus,origin_x,origin_y,scale);         
+	}
+	
+	
+	
+	// Beginning of the main program	
+	
+	var audio = new Audio();
+	
+	
+	audio.onplay = function() {
+    	console.log("playing : " +audio.src)
+	};
+	
+
+	var svg = document.getElementById('svgzone');
+	var corpus = new Corpus("moncorpus"	);
+	
+	var filter1 = new Filter("footstep");
+	var filter2 = new Filter("horn");
+	var filter3 = new Filter("motor");
+	corpus.addFilter(filter1);
+	corpus.addFilter(filter2);
+	corpus.addFilter(filter3);
+	filter1.threshold=0.4;
+	filter2.threshold=0.2;
+	filter3.threshold=0.3;
+	filter1.numberOfStep=3;
+	filter2.numberOfStep=3;
+	filter3.numberOfStep=3;
+	filter1.color=230; // Hue of hsl color
+	filter2.color=130;
+	filter3.color=50;
+	filter1.makeSteps();
+	filter2.makeSteps();
+	filter3.makeSteps();
+	
+	
+	// SVG size
+	svg.setAttribute("width", "1100"); 
+	svg.setAttribute("height", "2400");
+	
+	// shift to plot TM-chart
+	var shift_y=120;
+	var shift_x=50;
+	var scale_plotTM=0.4;	
+	var xmax= document.getElementById('svgzone').getAttributeNS(null, 'width');
+	
+		
+	console.log(corpus);
+	files_input.addEventListener("change", openFiles, false);
+    
+
+
+
+	console.log(corpus);
+
+	
+	
+
+</script>
+
+
+
+
+</body>
+</html>
